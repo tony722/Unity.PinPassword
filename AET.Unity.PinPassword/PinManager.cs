@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using AET.Unity.SimplSharp;
 using AET.Unity.SimplSharp.FileIO;
 
@@ -8,7 +10,8 @@ namespace AET.Unity.PinPassword {
 
     private string enteredPin = string.Empty;
 
-    private int changingPin = 0;
+    private int pinBeingChanged = 0;
+    private ushort revealPin;
 
     #region Constructors
     public PinManager() {
@@ -26,16 +29,15 @@ namespace AET.Unity.PinPassword {
     private void CreateTestDelegates() {
       SetMessage = delegate { };
       SetPinDisplay = delegate { };
-      SetPinStars = delegate { };
       PulseValidPinEntered = delegate { };
       PulseBackdoorPinEntered = delegate { };
       PulseInvalidPinEntered =  delegate { };
       PulseValidPinEnteredIndex = delegate { };
       PulseChangePinCancelled = delegate { };
-      PulseChangePinSuccess = delegate { };
-      SetChangingPin = delegate { };
-      SetChangingPinActive = delegate { };
-      SetChangingPinInactive = delegate { };
+      PulseChangePinSuccessful = delegate { };
+      SetPinBeingChanged = delegate { };
+      SetPinChangingActive = delegate { };
+      SetPinChangingInactive = delegate { };
     }
 
     #region Properties
@@ -49,46 +51,105 @@ namespace AET.Unity.PinPassword {
       set { pins.BackdoorPin = value; }
     }
 
-    public int ChangingPin {
-      get { return changingPin; }
-      private set {
-        if (changingPin > 0) {
-          SetChangingPin((ushort)changingPin, 0);
-          if(value != changingPin) Clear();
+    public ushort PinLength { get; set; }
+
+    private int PinBeingChanged {
+      get { return pinBeingChanged; }
+      set {
+        if (pinBeingChanged > 0) {
+          SetPinBeingChanged((ushort)pinBeingChanged, 0);
+          if(value != pinBeingChanged) Clear();
         }
-        if(value > 0) SetChangingPin((ushort)value, 1);
-        changingPin = value;
-        SetChangingPinInactive((value == 0).ToUshort());
-        SetChangingPinActive((value > 0).ToUshort());
+        if(value > 0) SetPinBeingChanged((ushort)value, 1);
+        pinBeingChanged = value;
+        SetPinChangingInactive((value == 0).ToUshort());
+        SetPinChangingActive((value > 0).ToUshort());
       }
     }
 
-
+    public ushort RevealPin {
+      get { return revealPin; }
+      set {
+        if (value == revealPin) return;
+        revealPin = value;
+        UpdatePinDisplay();
+      }
+    }
 
     #endregion 
 
     #region Splus Methods
 
     public void Init() {
-      ChangingPin = 0;
+      PinBeingChanged = 0;
+      SanityCheckPins();
     }
 
-    public void PressDigit(ushort digit) {
-      enteredPin += (digit % 10).ToString();
-      UpdatePinDisplay();
-      if (ChangingPin > 0) {
-        if (enteredPin.Length > PinLength) {
-          enteredPin = enteredPin.Substring(0, PinLength);
-          UpdatePinDisplay();
-        }
-      } else if (enteredPin.Length >= PinLength) {
-        CheckPin();
+    private void SanityCheckPins() {
+      if (!SanityCheckBackdoorPin()) return;
+
+      var invalidPins = new List<PinItem>();
+      
+      foreach (var pin in pins) if (pin.Pin.Length != PinLength) invalidPins.Add(pin);
+      if (invalidPins.Count > 0) {
+        var pinText = string.Join(", #", invalidPins.Select(p => p.Position.ToString()).ToArray());
+        SetMessage(string.Format("The following PIN(s) are invalid and will not work: #{1}. Must be exactly Pin_Length ({0} digits).", PinLength, pinText));
       }
     }
 
+    private bool SanityCheckBackdoorPin() {
+      if(BackdoorPin == null) return true;
+      if(BackdoorPin.Length > 0 && BackdoorPin.Length != PinLength) {
+        SetMessage(string.Format("Backdoor PIN is not correct length. Must be exactly Pin_Length ({0} digits).", PinLength));
+        return false;
+      }
+      return true;
+    }
+
+    public void PressDigit(ushort digit) {
+      AddNewDigitToPin(digit);
+      UpdatePinDisplay();
+      if (InPinChangeMode()) {
+        TrimPinToMaxPinLength();
+      } else if (enteredPin.Length >= PinLength) {
+        CheckEnteredPin();
+      }
+    }
+    #region PressDigit() methods
+    private void AddNewDigitToPin(ushort digit) {
+      enteredPin += (digit % 10).ToString();
+    }
+
+    private bool InPinChangeMode() {
+      return PinBeingChanged > 0;
+    }
+
+    private void TrimPinToMaxPinLength() {
+      if (enteredPin.Length > PinLength) {
+        enteredPin = enteredPin.Substring(0, PinLength);
+        UpdatePinDisplay();
+      }
+    }
+
+    private void CheckEnteredPin() {
+      PinItem pin;
+      if (pins.PinIsValid(enteredPin, out pin)) {
+        PulseValidPinEntered();
+        if (pin.IsBackdoorPin) PulseBackdoorPinEntered();
+        else PulseValidPinEnteredIndex((ushort)pin.Position);
+        Clear();
+      } else {
+        PulseInvalidPinEntered();
+        Clear();
+        SetMessage("Invalid PIN Entered. Please try again.");
+      }
+    }
+
+    #endregion
+
     private void UpdatePinDisplay() {
-      SetPinDisplay(enteredPin);
-      SetPinStars(new string('*', enteredPin.Length));
+      if(RevealPin == 0) SetPinDisplay(new string('*', enteredPin.Length));
+      else SetPinDisplay(enteredPin);
     }
 
     public void PressBackspace() {
@@ -98,71 +159,75 @@ namespace AET.Unity.PinPassword {
     }
 
     public void PressSavePin() {
-      if (enteredPin.Length < PinLength) {
+      if (TriedToSavePinShorterThanPinLength()) {
         SetMessage(string.Format("PIN must be {0} digits. Please enter more digits.", PinLength));
         return;
       }
-      pins[ChangingPin].Pin = enteredPin.Substring(0,PinLength);
+      pins[PinBeingChanged].Pin = EnteredPinTrimmedToPinLength();
       Clear();
-      SaveConfig();
-      ChangingPin = 0;
-      PulseChangePinSuccess();
+      SaveConfigFile();
+      PinBeingChanged = 0;
+      PulseChangePinSuccessful();
     }
-    private void CheckPin() {
-      PinItem pin;
-      if (pins.PinIsValid(enteredPin, out pin)) {
-        PulseValidPinEntered();
-        if (pin.IsBackdoorPin) PulseBackdoorPinEntered();
-        else PulseValidPinEnteredIndex((ushort)pin.Position);
-        Clear();
-      }
-      else {
-        SetMessage("Invalid PIN Entered. Please try again.");
-        PulseInvalidPinEntered();
-        Clear();
-      }
+    #region PressSavePin() methods
+    private bool TriedToSavePinShorterThanPinLength() {
+      return enteredPin.Length < PinLength;
     }
+
+    private string EnteredPinTrimmedToPinLength() {
+      return enteredPin.Substring(0, PinLength);
+    }
+    #endregion
 
     public bool PinIsValid(string pin) {
       return pins.PinIsValid(pin);
     }
 
     public void PressClear() {
-      if (ChangingPin > 0) {
+      if (PinBeingChanged > 0) {
         PulseChangePinCancelled();
-        ChangingPin = 0;
-      } else Clear();
+        PinBeingChanged = 0;
+      } 
+      Clear();
     }
 
     private void Clear() {
       enteredPin = string.Empty;
       SetMessage("");
       SetPinDisplay("");
-      SetPinStars("");
     }
-    public ushort PinLength { get; set; }
 
     public void PressChangePin(ushort index) {
       Clear();
       SetMessage(string.Format("Please enter new {0}-digit PIN", PinLength));
-      ChangingPin = index;
+      PinBeingChanged = index;
     }
     #endregion
 
     #region SPlus Outputs
+
     public SetStringOutputDelegate SetPinDisplay { get; set; }
-    public SetStringOutputDelegate SetPinStars { get; set; }
+
     public SetStringOutputDelegate SetMessage { get; set; }
+
     public TriggerDelegate PulseChangePinCancelled { get; set; }
-    public TriggerDelegate PulseChangePinSuccess { get; set; }
-    public SetUshortOutputArrayDelegate SetChangingPin { get; set; }
+
+    public TriggerDelegate PulseChangePinSuccessful { get; set; }
+
+    public SetUshortOutputArrayDelegate SetPinBeingChanged { get; set; }
+
     public TriggerDelegate PulseValidPinEntered { get; set; }
+
     public TriggerDelegate PulseBackdoorPinEntered { get; set; }
+
     public TriggerDelegate PulseInvalidPinEntered { get; set; }
+
     public TriggerArrayDelegate PulseValidPinEnteredIndex { get; set; }
-    public SetUshortOutputDelegate SetChangingPinActive { get; set; }
-    public SetUshortOutputDelegate SetChangingPinInactive { get; set; }
-    
+
+    public SetUshortOutputDelegate SetPinChangingActive { get; set; }
+
+    public SetUshortOutputDelegate SetPinChangingInactive { get; set; }
+
     #endregion
 
     #region File Handling
@@ -182,7 +247,7 @@ namespace AET.Unity.PinPassword {
       pins.LoadPinsJson(jsonPins);
     }
 
-    public void SaveConfig() {
+    public void SaveConfigFile() {
       FileIo.WriteText(FilePath, pins.SerializePinsJson());
     }
     #endregion 

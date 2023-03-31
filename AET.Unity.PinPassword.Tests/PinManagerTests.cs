@@ -11,7 +11,7 @@ namespace AET.Unity.PinPassword.Tests {
     private PinManager pin;
     private bool pinValid, pinInvalid;
     private int validIndex;
-    private string pinDisplay, pinStars;
+    private string pinDisplay, message;
     private readonly int[] changingPinFeedback = new int[4];
     private bool changePinSuccess, changePinCancelled;
     
@@ -22,17 +22,37 @@ namespace AET.Unity.PinPassword.Tests {
         BackdoorPin = "0000"
       };
       pin.ReadConfigFile();
+      SetupDelegatesForTestingFeedback();
+    }
+
+    private void SetupDelegatesForTestingFeedback() {
       pin.PulseValidPinEnteredIndex = (idx) => {
         pinValid = true;
         validIndex = idx;
       };
       pin.PulseInvalidPinEntered = () => pinInvalid = true;
       pin.SetPinDisplay = (s) => pinDisplay = s.ToString();
-      pin.SetPinStars = (s) => pinStars = s.ToString();
-      pin.SetChangingPin = (i, v) => changingPinFeedback[i - 1] = v;
+      pin.SetMessage = (s) => message = s.ToString();
+      pin.SetPinBeingChanged = (i, v) => changingPinFeedback[i - 1] = v;
       pin.PulseChangePinCancelled = () => changePinCancelled = true;
-      pin.PulseChangePinSuccess = () => changePinSuccess = true;
+      pin.PulseChangePinSuccessful = () => changePinSuccess = true;
     }
+
+    #region Sanity Checking Tests
+    [TestMethod]
+    public void Init_PinsFileHasPinsWrongLength_ShowsMessage() {
+      pin.LoadPins("[{\"Pin\":\"12345\",\"Position\":1},{\"Pin\":\"5891\",\"Position\":2},{\"Pin\":\"56789\",\"Position\":3}]");
+      pin.Init();
+      message.Should().Be("The following PIN(s) are invalid and will not work: #1, #3. Must be exactly Pin_Length (4 digits).");
+    }
+
+    [TestMethod]
+    public void Init_BackdoorPinWrongLength_ShowsMessage() {
+      pin.BackdoorPin = "12345";
+      pin.Init();
+      message.Should().Be("Backdoor PIN is not correct length. Must be exactly Pin_Length (4 digits).");
+    }
+    #endregion
 
     #region Pin Checking Tests
     [TestMethod]
@@ -62,21 +82,26 @@ namespace AET.Unity.PinPassword.Tests {
     public void SetPinDisplay_DigitsPressed_DisplaysPressedDigits() {
       pin.PressDigit(5);
       pin.PressDigit(6);
+      pinDisplay.Should().Be("**");
+      pin.RevealPin = 1;
+      pinDisplay.Should().Be("56");
       pin.PressDigit(7);
       pinDisplay.Should().Be("567");
-      pinStars.Should().Be("***");
+      pin.RevealPin = 0;
+      pinDisplay.Should().Be("***");
     }
 
     [TestMethod]
     public void SetPinDisplay_IndexTenPressed_DisplaysZero() {
+      pin.RevealPin = 1;
       pin.PressDigit(7);
       pin.PressDigit(10);
       pinDisplay.Should().Be("70");
-      pinStars.Should().Be("**");
     }
 
     [TestMethod]
     public void PressBackspace_ClearsMostRecentCharacter() {
+      pin.RevealPin = 1;
       pin.PressDigit(5);
       pin.PressDigit(6);
       pin.PressDigit(7);
@@ -122,6 +147,7 @@ namespace AET.Unity.PinPassword.Tests {
     [TestMethod]
     public void ChangePin_ChangePinToChangeInMiddle_OutputClearedAndFeedbackSetCorrectly() {
       pin.PressChangePin(4);
+      pin.RevealPin = 1;
       changingPinFeedback.Should().BeEquivalentTo(new [] { 0, 0, 0, 1 });
       pin.PressDigit(3);
       pin.PressDigit(3);

@@ -1,12 +1,13 @@
 ﻿using AET.Unity.SimplSharp;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 
 namespace AET.Unity.PinPassword {
-  internal class Pins {
+  internal class Pins : IEnumerable<PinItem> {
     private List<PinItem> pins;
     private readonly PinItem backdoorPinItem = new PinItem { Position = 0, IsBackdoorPin = true };
     public Pins() {
@@ -81,6 +82,14 @@ namespace AET.Unity.PinPassword {
 
     public int Count {
       get { return pins.Count; }
+    }
+
+    public IEnumerator<PinItem> GetEnumerator() {
+      return pins.GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator() {
+      return GetEnumerator();
     }
   }
 }

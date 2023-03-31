@@ -13,28 +13,27 @@
 
 #HELP_BEGIN
 INPUTS:
-  Init (Loads config file holding pins and does other minor setup. Must be run before first use)
-  Press_Digit[1]-[10]. For entering pins. IMPORTANT: [10] is actually the number [0]. When the number of digits = Pin_Length it automatically verifies the PIN (Unless in Change_Pin mode when it's necessary to hit "Save")
+  Init (Loads config file holding PINs and does other minor setup. Must be run before first use)
+  Press_Digit[1]-[10]. For entering PINs. IMPORTANT: [10] is actually the number [0]. When the number of digits pressed = Pin_Length it automatically verifies the PIN (Unless in Change_Pin mode when it's necessary to hit "Save")
   Backspace. For making corrections when entering PINS
   Clear. Clears the pin being entered, cancels out of Change_Pin mode.
-  Change_Pin[1-10]. Enters change mode for a particular pin. Enter the desired digits, and hit Save.
+  Change_Pin[1-10]. Enters change mode for a particular PIN. Enter the desired digits, and hit Save.
 
 OUTPUTS:
-  Valid_Pin_Entered. Pulses when any valid pin is entered, including Backdoor
-  Invalid_Pin_Entered. Pulses when any invalid pin is entered.
-  Change_Pin_Success. Pulses when a pin is successfully changed/saved.
+  Valid_Pin_Entered. Pulses when any valid PIN is entered, including Backdoor
+  Invalid_Pin_Entered. Pulses when any invalid PIN is entered.
+  Change_Pin_Success. Pulses when a PIN is successfully changed/saved.
   Change_Pin_Cancelled. Pulses when cancelling out of Change_Pin mode without saving.
   Backdoor_Pin_Entered. Pulses when the backdoor PIN is entered.
   Pin_Entered[1]-[10]. Pulses when the corresponding PIN is entered.
   Change_Pin_F[1]-[10]. High when the corresponding PIN is being changed.
   Change_Pin_Active. High when any PIN is being changed.
   Change_Pin_Inactive. High when no PINs are being changed.
-  Pin_Display. Displays the PIN as you enter it.
-  Pin_Stars. Displays the PIN as stars as you enter it.
+  Pin_Display. Displays the PIN as stars you enter it. If Reveal_Pin is high, displays actual numbers of PIN
   Message. Displays various status messages.
 
 PARAMETERS:
-  Pin_Length. All pins should be this length.
+  Pin_Length. All PINs should be this length exactly.
   Backdoor_Pin. For dealer or backdoor use.
   File_Path. Location to store PINS config file. If multiple AET Pin modules are used in one program, each must use a separate config file name.
 
@@ -55,7 +54,7 @@ Version:   			1.0.0
   Inputs
 *******************************************************************************************/
 DIGITAL_INPUT _skip_, _skip_, _skip_;
-DIGITAL_INPUT Init;
+DIGITAL_INPUT Init, Reveal_Pin;
 DIGITAL_INPUT Backspace, Clear, Save;
 DIGITAL_INPUT Press_Digit[10];
 DIGITAL_INPUT Change_Pin[MAX_PINS];
@@ -67,7 +66,7 @@ DIGITAL_OUTPUT _skip_, _skip_, _skip_, _skip_;
 DIGITAL_OUTPUT Valid_Pin_Entered, Invalid_Pin_Entered, Change_Pin_Success, Change_Pin_Cancelled;
 DIGITAL_OUTPUT Backdoor_Pin_Entered, Change_Pin_Active, Change_Pin_Inactive;
 DIGITAL_OUTPUT Pin_Entered[MAX_PINS], Change_Pin_F[MAX_PINS];
-STRING_OUTPUT  Pin_Display, Pin_Stars, Message;
+STRING_OUTPUT  Pin_Display, Message;
 
 /*******************************************************************************************
   Parameters
@@ -89,40 +88,41 @@ PinManager pin;
   Functions
 *******************************************************************************************/
 callback function SetPinDisplay(string value) { Pin_Display = value; }
-callback function SetPinStars(string value) { Pin_Stars = value; }
 callback function SetMessage(string value) { Message = value; }
 callback function PulseValidPinEntered() { Valid_Pin_Entered = 1; Valid_Pin_Entered = 0; }
 callback function PulseInvalidPinEntered() { Invalid_Pin_Entered = 1; Invalid_Pin_Entered = 0; }
 callback function PulseBackdoorPinEntered() { Backdoor_Pin_Entered = 1; Backdoor_Pin_Entered = 0; }
 callback function PulseValidPinEnteredIndex(byval integer idx) { Pin_Entered[idx] = 1; Pin_Entered[idx] = 0; }
 callback function PulseChangePinCancelled() { Change_Pin_Cancelled = 1; Change_Pin_Cancelled = 0; }
-callback function PulseChangePinSuccess() { Change_Pin_Success = 1; Change_Pin_Success = 0; }
-callback function SetChangingPin(integer index, integer value) { Change_Pin_F[index] = value; }
-callback function SetChangingPinActive(integer value) { Change_Pin_Active = value; }
-callback function SetChangingPinInactive(integer value) { Change_Pin_Inactive = value; }
+callback function PulseChangePinSuccessful() { Change_Pin_Success = 1; Change_Pin_Success = 0; }
+callback function SetPinBeingChanged(integer index, integer value) { Change_Pin_F[index] = value; }
+callback function SetPinChangingActive(integer value) { Change_Pin_Active = value; }
+callback function SetPinChangingInactive(integer value) { Change_Pin_Inactive = value; }
 
 /*******************************************************************************************
   Events
 *******************************************************************************************/
 PUSH Init {
 	RegisterDelegate(pin, SetPinDisplay, SetPinDisplay);
-	RegisterDelegate(pin, SetPinStars, SetPinStars);
   RegisterDelegate(pin, SetMessage, SetMessage);  
 	RegisterDelegate(pin, PulseValidPinEntered, PulseValidPinEntered);
 	RegisterDelegate(pin, PulseInvalidPinEntered, PulseInvalidPinEntered);
 	RegisterDelegate(pin, PulseBackdoorPinEntered, PulseBackdoorPinEntered);
 	RegisterDelegate(pin, PulseValidPinEnteredIndex, PulseValidPinEnteredIndex);
   RegisterDelegate(pin, PulseChangePinCancelled, PulseChangePinCancelled);
-  RegisterDelegate(pin, PulseChangePinSuccess, PulseChangePinSuccess);
-  RegisterDelegate(pin, SetChangingPin, SetChangingPin);
-  RegisterDelegate(pin, SetChangingPinActive, SetChangingPinActive);
-  RegisterDelegate(pin, SetChangingPinInactive, SetChangingPinInactive);
+  RegisterDelegate(pin, PulseChangePinSuccessful, PulseChangePinSuccessful);
+  RegisterDelegate(pin, SetPinBeingChanged, SetPinBeingChanged);
+  RegisterDelegate(pin, SetPinChangingActive, SetPinChangingActive);
+  RegisterDelegate(pin, SetPinChangingInactive, SetPinChangingInactive);
   
-  pin.Init();
-  pin.PinLength = Pin_Length;
   pin.BackdoorPin = Backdoor_Pin;
+  pin.PinLength = Pin_Length;
   pin.ReadConfigFile(File_Path);
+
+  pin.Init();
 }
+
+CHANGE Reveal_Pin { pin.RevealPin = Reveal_Pin; }
 
 PUSH Clear { pin.PressClear(); }
 PUSH Save { pin.PressSavePin(); }
