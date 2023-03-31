@@ -168,6 +168,18 @@ namespace AET.Unity.PinPassword.Tests {
       changePinCancelled.Should().BeTrue();
       changePinSuccess.Should().BeFalse();
     }
+
+    [TestMethod]
+    public void DeletePin_PinExists_Deletes() {
+      pin.PinIsValid("1234").Should().BeTrue("because this is PIN 1 in this test setup");
+      pin.PressChangePin(1);
+      pin.PressDeletePin();
+      pin.PinIsValid("1234").Should().BeFalse("because we deleted it");
+      pinDisplay.Should().Be("");
+      changingPinFeedback.Should().BeEquivalentTo(new[] { 0, 0, 0, 0 });
+      changePinCancelled.Should().BeTrue();
+      changePinSuccess.Should().BeFalse();
+    }
     #endregion
   }
 }

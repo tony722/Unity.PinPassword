@@ -15,6 +15,7 @@ namespace AET.Unity.PinPassword {
 
     #region Constructors
     public PinManager() {
+      CreateDelegatePlaceholders();
       FileIo = new CrestronFileIO();
       PinLength = 4;
     }
@@ -22,11 +23,11 @@ namespace AET.Unity.PinPassword {
     internal PinManager(IFileIO fileIo) {
       FileIo = fileIo;
       PinLength = 4;
-      CreateTestDelegates();
+      CreateDelegatePlaceholders();
     }
     #endregion
 
-    private void CreateTestDelegates() {
+    private void CreateDelegatePlaceholders() {
       SetMessage = delegate { };
       SetPinDisplay = delegate { };
       PulseValidPinEntered = delegate { };
@@ -134,13 +135,13 @@ namespace AET.Unity.PinPassword {
     private void CheckEnteredPin() {
       PinItem pin;
       if (pins.PinIsValid(enteredPin, out pin)) {
+        Clear();
         PulseValidPinEntered();
         if (pin.IsBackdoorPin) PulseBackdoorPinEntered();
         else PulseValidPinEnteredIndex((ushort)pin.Position);
-        Clear();
       } else {
-        PulseInvalidPinEntered();
         Clear();
+        PulseInvalidPinEntered();
         SetMessage("Invalid PIN Entered. Please try again.");
       }
     }
@@ -164,10 +165,10 @@ namespace AET.Unity.PinPassword {
         return;
       }
       pins[PinBeingChanged].Pin = EnteredPinTrimmedToPinLength();
-      Clear();
-      SaveConfigFile();
       PinBeingChanged = 0;
+      Clear();
       PulseChangePinSuccessful();
+      SaveConfigFile();
     }
     #region PressSavePin() methods
     private bool TriedToSavePinShorterThanPinLength() {
@@ -178,6 +179,15 @@ namespace AET.Unity.PinPassword {
       return enteredPin.Substring(0, PinLength);
     }
     #endregion
+
+    public void PressDeletePin() {
+      if (!InPinChangeMode()) return;
+      pins.DeletePin(PinBeingChanged);
+      PinBeingChanged = 0;
+      Clear();
+      PulseChangePinCancelled();
+      SaveConfigFile();
+    }
 
     public bool PinIsValid(string pin) {
       return pins.PinIsValid(pin);

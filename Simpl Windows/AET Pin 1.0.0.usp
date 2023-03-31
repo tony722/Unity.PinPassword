@@ -18,6 +18,8 @@ INPUTS:
   Backspace. For making corrections when entering PINS
   Clear. Clears the pin being entered, cancels out of Change_Pin mode.
   Change_Pin[1-10]. Enters change mode for a particular PIN. Enter the desired digits, and hit Save.
+  Delete. Deletes the PIN being changed (see Change_Pin[]).
+  Save. Saves the PIN being changed (see Change_Pin[])
 
 OUTPUTS:
   Valid_Pin_Entered. Pulses when any valid PIN is entered, including Backdoor
@@ -37,9 +39,8 @@ PARAMETERS:
   Backdoor_Pin. For dealer or backdoor use.
   File_Path. Location to store PINS config file. If multiple AET Pin modules are used in one program, each must use a separate config file name.
 
-Copyright (C) 2023 Anthony Evert | tony722@gmail.com
-
-Programmer: 		Tony Evert
+Copyright (C) 2023 Anthony Evert 
+Programmer: 		Tony Evert / tony722@gmail.com
 Version:   			1.0.0
 
 #HELP_END
@@ -55,7 +56,7 @@ Version:   			1.0.0
 *******************************************************************************************/
 DIGITAL_INPUT _skip_, _skip_, _skip_;
 DIGITAL_INPUT Init, Reveal_Pin;
-DIGITAL_INPUT Backspace, Clear, Save;
+DIGITAL_INPUT Backspace, Clear, Save, Delete;
 DIGITAL_INPUT Press_Digit[10];
 DIGITAL_INPUT Change_Pin[MAX_PINS];
 
@@ -126,6 +127,7 @@ CHANGE Reveal_Pin { pin.RevealPin = Reveal_Pin; }
 
 PUSH Clear { pin.PressClear(); }
 PUSH Save { pin.PressSavePin(); }
+PUSH Delete { pin.PressDeletePin(); }
 PUSH Change_Pin { pin.PressChangePin(GetLastModifiedArrayIndex()); }
 PUSH Press_Digit { pin.PressDigit(GetLastModifiedArrayIndex()); }
 PUSH Backspace { pin.PressBackspace(); }

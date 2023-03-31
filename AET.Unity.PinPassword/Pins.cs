@@ -19,14 +19,21 @@ namespace AET.Unity.PinPassword {
       LoadPinsJson(jsonPins);
     }
 
-    public PinItem this[int index] {
+    public PinItem this[int position] {
       get {
-        var pin = pins.FirstOrDefault(p => p.Position == index);
+        var pin = pins.FirstOrDefault(p => p.Position == position);
         if (pin == null) {
-          pin = new PinItem { Position = index };
+          pin = new PinItem { Position = position };
           pins.Add(pin);
         }
         return pin;
+      }
+    }
+
+    public void DeletePin(int position) {
+      var pin = pins.FirstOrDefault(p => p.Position == position);
+      if (pin != null) {
+        pins.Remove(pin);
       }
     }
 
